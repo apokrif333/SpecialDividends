@@ -3,11 +3,15 @@ import requests
 import pandas as pd
 import re
 import time
+import pandas_market_calendars as mcal
+import datetime as datet
 
 from FinanceAndMl_libs import finance_ml as fm
 from pprint import pprint
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+from termcolor import colored
+
 
 # Settings
 pd.set_option('max_rows', 1_000)
@@ -16,8 +20,8 @@ pd.set_option('display.width', 1_200)
 
 
 cur_disc = os.getcwd().split('\\')[0]
-user_name = 'kvvtamfarsqyuphhyf@bvhrk.com'
-password = '659434'
+user_name = 'kenney25@lmaritimen.com'
+password = '329493'
 key_words = "dividend or per share or distribution"
 sort_news = 'date'  # hits
 keyword_type = 'boolean'  # boolean
@@ -33,9 +37,13 @@ headers = {
 
 def get_tiingo() -> pd.DataFrame:
     cur_disc = os.getcwd().split('\\')[0]
-    df = pd.read_csv(f'{cur_disc}\Биржа\Stocks. BigData\Projects\APIs\API_Tiingo\supported_tickers 2022-06-03.csv')
-    df = df[(df['priceCurrency'] == 'USD') & ~pd.isna(df['startDate']) & ~pd.isna(df['exchange']) &
-            ~df['exchange'].isin(['LSE', 'SHE', 'ASX', 'SHG', 'NMFQS', 'CSE'])]
+    tiingo_date = '2022-08-08'
+    tiingo_week_ago = (pd.to_datetime(tiingo_date) - timedelta(days=7)).strftime('%Y-%m-%d')
+    df = pd.read_csv(f'{cur_disc}\Биржа\Stocks. BigData\Projects\APIs\API_Tiingo\supported_tickers {tiingo_date}.csv')
+    df = df[
+        (df['priceCurrency'] == 'USD') & ~pd.isna(df['startDate']) & ~pd.isna(df['exchange']) &
+        ~df['exchange'].isin(['LSE', 'SHE', 'ASX', 'SHG', 'NMFQS', 'CSE']) & (df['endDate'] > tiingo_week_ago)
+    ]
 
     return df
 
@@ -44,15 +52,15 @@ def get_asset_type(df_tiingo: pd.DataFrame, ticker: str) -> str:
     cur_df = df_tiingo[df_tiingo['ticker'] == ticker]
     if len(cur_df) == 0:
         print(ticker, cur_df)
-        print('Нет тикера в Tiingo базе. Обработай вручную. Укажи Stock или иное.')
-        return input()
+        print(colored('Нет тикера в Tiingo базе. Обработай вручную. Будет указан -', 'red'))
+        return '-'
     elif len(cur_df) == 1:
         return cur_df['assetType'].iloc[0]
     elif len(cur_df['assetType'].unique()) == 1:
         return cur_df['assetType'].unique()[0]
     else:
-        print(ticker, cur_df)
-        raise Exception('Несколько одинаковых тикеров в базе Tiingo')
+        print(colored('Дубликаты в Tiingo базе. Обработай вручную. Будет указан -', 'red'))
+        return '-'
 
 
 def make_data_for_request(soup: BeautifulSoup, names_for_pop: list, data_change: dict) -> dict:
@@ -102,9 +110,10 @@ def fill_news_file(soup: BeautifulSoup, dict_df: dict) -> dict:
     return dict_df
 
 
-def news_finder(s: requests.Session, dict_df: dict, key_words: str, sort_news: str, keyword_type: str, start_date: str,
-                end_date: str):
+def news_finder(s: requests.Session, key_words: str, sort_news: str, keyword_type: str, start_date: str, end_date: str):
     # Получение новостей ------------------------------------------------------------------------------------------
+    dict_df = {'date': [], 'time': [], 'ticker': [], 'headline': [], 'link': []}
+
     r = s.get('https://www.stockwatch.com/News/Search.aspx')
     soup = BeautifulSoup(r.text, "lxml")
     names_for_pop = [
@@ -125,7 +134,6 @@ def news_finder(s: requests.Session, dict_df: dict, key_words: str, sort_news: s
         'ctl00$MainContent$tKeywordFrom': start_date, 'ctl00$MainContent$tKeywordTo': end_date
     }
     data = make_data_for_request(soup, names_for_pop, data_change)
-
     r = s.post('https://www.stockwatch.com/News/Search.aspx', data=data)
     soup = BeautifulSoup(r.text, "lxml")
 
@@ -202,20 +210,25 @@ def create_session(base_url: str, headers: dict, cur_disc: str = cur_disc):
         time.sleep(3)
 
         # Получение новостей по определённому слову
-        dict_df = {'date': [], 'time': [], 'ticker': [], 'headline': [], 'link': []}
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=1) if end_date.weekday() != 0 else end_date - timedelta(days=3)
-        news_finder(
-            s, dict_df, key_words, sort_news, keyword_type, start_date.strftime('%Y%m%d'), end_date.strftime('%Y%m%d')
-        )
+        work_days = [datetime.now()]
+        for end_date in work_days:
+            start_date = mcal.get_calendar('NYSE').schedule(
+                start_date=end_date-timedelta(days=7),
+                end_date=end_date
+            )
+            start_date = start_date.index[-2]
+            news_finder(
+                s, key_words, sort_news, keyword_type, start_date.strftime('%Y%m%d'), end_date.strftime('%Y%m%d')
+            )
+            filter_news(end_date, start_date)
 
         # Закрываем сессию
         s.close()
 
 
-def filter_news():
-    today = datetime.now()
-    yesterday = today - timedelta(days=1) if today.weekday() != 0 else today - timedelta(days=3)
+def filter_news(today: datet.date, yesterday: datet.date):
+    # today = datetime.now()
+    # yesterday = today - timedelta(days=1) if today.weekday() != 0 else today - timedelta(days=3)
     df = pd.read_csv(f"data\SpecDiv_{today.strftime('%Y%m%d')}.csv", parse_dates=['date'])
     df_tiingo = get_tiingo()
 
@@ -227,9 +240,12 @@ def filter_news():
 
     # Удалим ETF
     idx_drop = []
+    df['assetType'] = None
     for idx, row in df.iterrows():
-        if get_asset_type(df_tiingo, row['ticker']) != 'Stock':
+        asset_type = get_asset_type(df_tiingo, row['ticker'])
+        if asset_type not in ['Stock', '-']:
             idx_drop.append(idx)
+        df.loc[idx, 'assetType'] = asset_type
     df.drop(idx_drop, axis=0, inplace=True)
 
     # Удалим не проходящие по объёму. Добавим данные.
@@ -239,13 +255,18 @@ def filter_news():
     for idx, row in df.iterrows():
         ticker = row['ticker']
         if ticker not in dict_data.keys():
+            idx_drop.append(idx)
             continue
-        cur_date = pd.to_datetime(row['date']).strftime('%Y-%m-%d')
-        cur_df = dict_data[ticker][:cur_date]
+
+        cur_yesterday = yesterday.strftime('%Y-%m-%d')
+        cur_df = dict_data[ticker][:cur_yesterday]
+        if cur_yesterday not in cur_df.index:
+            print(f"{ticker, cur_yesterday} нет данных на дату")
+            idx_drop.append(idx)
+            continue
 
         prenews_price = cur_df['close'].iloc[-1]
         avg_vol = cur_df['volume'].iloc[-20:].mean()
-
         if (50_000 > avg_vol) or (avg_vol > 3_000_000):
             idx_drop.append(idx)
         else:
@@ -254,19 +275,19 @@ def filter_news():
     df.drop(idx_drop, axis=0, inplace=True)
     df['divAmount'] = None
     df['divToPrice'] = None
-    df['exDivDate'] = None
+    df['recordDate'] = None
     df['dayDiff'] = None
 
     # Если финальный файл уже существует, то добвим к тему недостающие данные
     path = f"data\SpecDiv_{today.strftime('%Y%m%d')}_final.csv"
     if os.path.exists(path):
         old_df = pd.read_csv(path)
-        new_df = pd.concat([old_df, df])
-        new_df.drop_duplicates(subset=['ticker', 'link'], keep=False, inplace=True)
-        new_df.to_csv(path, mode='a', header=False, index=False)
+        new_df = pd.concat([old_df, df], ignore_index=True)
+        new_df.drop_duplicates(subset=['ticker', 'headline'], keep=False, inplace=True)
+        new_df.sort_values('date').to_csv(path, mode='a', header=False, index=False)
     else:
-        df.drop_duplicates(subset=['ticker', 'link'], keep='first', inplace=True)
-        df.to_csv(path, index=False)
+        df.drop_duplicates(subset=['ticker', 'headline'], keep='first', inplace=True)
+        df.sort_values('date').to_csv(path, index=False)
 
     print(pd.read_csv(path))
     print("Рассчитай вручную, чтобы до дня ex-div date было менее 20 дней и чтобы див был более 2.5% от цены.")
@@ -274,18 +295,13 @@ def filter_news():
 
 if __name__ == "__main__":
     create_session(base_url, headers)
-    filter_news()
-    time.sleep(60)
 
     while datetime.now().hour < 10:
         hour = datetime.now().hour
         min = datetime.now().minute
-        if (hour in [4, 5, 6, 7, 8, 9] and min == 1) or (hour == 9 and min in [15, 20]):
+        if (hour in [4, 5, 6, 7, 8, 9] and min == 1) or (hour == 9 and min in [10, 15]):
             print(f"Работаем. {datetime.now()}")
             create_session(base_url, headers)
-            filter_news()
-            time.sleep(60)
+            time.sleep(30)
 
         time.sleep(60)
-
-    # Прописать выставление ордеров.

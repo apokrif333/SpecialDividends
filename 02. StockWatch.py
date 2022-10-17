@@ -17,8 +17,8 @@ pd.set_option('display.width', 1_200)
 
 
 cur_disc = os.getcwd().split('\\')[0]
-user_name = 'kvvtamfarsqyuphhyf@bvhrk.com'
-password = '659434'
+user_name = 'amunique@gbubrook.com'
+password = '199380'
 key_words = '"Special Dividend" +declare'
 start_date = '19980101'
 end_date = '19991231'
@@ -45,8 +45,11 @@ def make_data_for_request(soup: BeautifulSoup, names_for_pop: list, data_change:
     return data
 
 
-def time_converter(raw_data) -> (datetime, str):
-    date = pd.to_datetime(raw_data.get_text()) + timedelta(hours=3)
+def time_converter(raw_data, add_3_hours: bool = True) -> (datetime, str):
+    if add_3_hours:
+        date = pd.to_datetime(raw_data.get_text()) + timedelta(hours=3)
+    else:
+        date = pd.to_datetime(raw_data.get_text())
     news_time = datetime.strptime(f"{date.hour}-{date.minute}", '%H-%M')
     if news_time > datetime.strptime(f"15-50", '%H-%M'):
         day_time = 'AMC'
@@ -230,7 +233,7 @@ def news_for_exist_exdiv_date(s: requests.Session, set_date: str):
             'ctl00$RadioRegion2': 'RadioUS2', 'ctl00$CheckQuote2': 'on', 'ctl00$CheckNews2': 'on',
             'ctl00$MainContent$cSymbol': 'on', 'ctl00$MainContent$dTodayRegion': 'С',
             'ctl00$MainContent$dSymbolFeed': 'U', 'ctl00$MainContent$dType': '200',
-            'ctl00$MainContent$tKeywords': '', 'ctl00$MainContent$dKeywordFeed': 'swbull',
+            'ctl00$MainContent$tKeywords': '', 'ctl00$MainContent$dKeywordFeed': 'usbull',
             'ctl00$MainContent$dKeywordSort': 'hits', 'ctl00$MainContent$dKeywordStemming': 'Y',
             'ctl00$MainContent$dKeywordType': 'nat', 'ctl00$MainContent$dKeywordFuzzy': '0',
             'ctl00$MainContent$dKeywordPhonic': 'N', 'ctl00$MainContent$dEx': '',
@@ -256,7 +259,7 @@ def news_for_exist_exdiv_date(s: requests.Session, set_date: str):
             headline = data[4].get_text()
             if re.search('dividend', headline, re.IGNORECASE) or re.search('Per Share', headline, re.IGNORECASE) or \
                     re.search('distribution', headline, re.IGNORECASE) or re.search('spin-off', headline, re.IGNORECASE):
-                date, day_time = time_converter(data[0])
+                date, day_time = time_converter(data[0], False)
                 link = 'https://www.stockwatch.com' + data[4].find('a')['href']
                 fundament_link = 'https://www.stockwatch.com/Quote/Fundamentals?U:' + ticker
                 head = headline
@@ -353,7 +356,7 @@ def create_session(base_url: str, headers: dict, cur_disc: str = cur_disc):
         # find_dividend_size(s)
 
         # Поиск новостей по ключ-словам, в определённом диапазоне времени
-        set_date = '2022-04-01'
+        set_date = '2022-01-01'
         news_for_exist_exdiv_date(s, set_date)
 
         # Сбор заголовков новостей по известной ссылке

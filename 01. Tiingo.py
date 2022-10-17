@@ -58,7 +58,7 @@ def make_file(cut_date: str):
 
 if __name__ == "__main__":
     # dividend, Per Share, Distribution, Spin-Off
-    make_file('2022-04-01')
+    make_file('2022-01-01')
 
     # tickers_error = []
     # path_usa = r'E:\Биржа\Stocks. BigData\Цены\Дейли\tiingo\usa'

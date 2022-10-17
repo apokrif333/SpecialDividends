@@ -8,7 +8,7 @@ from FinanceAndMl_libs import finance_ml as fm
 # Settings
 pd.set_option('max_rows', 1_000)
 pd.set_option('max_columns', 100)
-pd.set_option('display.width', 1_200)
+pd.set_option('display.width', 1_800)
 
 
 def delete_error_date(df: pd.DataFrame) -> pd.DataFrame:
@@ -47,7 +47,8 @@ def get_asset_type(df_tiingo: pd.DataFrame, ticker: str) -> str:
 if __name__ == "__main__":
     df_tiingo = get_tiingo()
 
-    df_main = pd.read_csv("SpecDiv_onlyTiingo_2022-04-01.csv")
+    set_date = '2022-01-01'
+    df_main = pd.read_csv(f"SpecDiv_onlyTiingo_{set_date}.csv")
     df_main = df_main[df_main['Time'] != '-']
     df_main = df_main[
         ['date', 'divCash', 'splitFactor', 'div_ratio', 'ticker', 'DecDay', 'Time', 'Link', 'FundamentLink', 'headline']
@@ -60,6 +61,7 @@ if __name__ == "__main__":
     df_main = df_main[df_main['Time'] != 'Error'].reset_index(drop=True)
 
     data_path = r"E:\Биржа\Stocks. BigData\Цены\Дейли\tiingo\usa"
+    # fm.download_tickers(df_main['ticker'].unique())
     dict_data = fm.get_tickers(df_main['ticker'].unique())
     load_tickers = list(dict_data.keys())
 
@@ -110,4 +112,4 @@ if __name__ == "__main__":
         df_main.loc[idx, 'AssetType'] = get_asset_type(df_tiingo, row['ticker'])
 
     df_main['Ex-dividend date'] = df_main['Ex-dividend date'].dt.strftime('%Y-%m-%d')
-    df_main.to_csv('SpecDiv_onlyTiingo_prices_2022-04-01.csv', index=False)
+    df_main.to_csv(f'SpecDiv_onlyTiingo_prices_{set_date}.csv', index=False)
